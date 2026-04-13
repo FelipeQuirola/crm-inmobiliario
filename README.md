@@ -193,6 +193,6 @@ npm run dev
 
 <div align="center">
 
-Desarrollado para **Inmobiliaria Homematch** · Ecuador · 2025–2026
+Desarrollado para **Inmobiliaria Homematch** · Ecuador · 2026
 
 </div>
