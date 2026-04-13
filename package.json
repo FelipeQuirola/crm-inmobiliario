@@ -1,0 +1,25 @@
+{
+  "name": "crm-inmobiliario",
+  "version": "1.0.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend,web -c cyan,magenta,yellow \"npm run dev --workspace=apps/backend\" \"npm run dev --workspace=apps/frontend\" \"npm run dev --workspace=apps/web\"",
+    "dev:crm": "concurrently -n backend,frontend -c cyan,magenta \"npm run dev --workspace=apps/backend\" \"npm run dev --workspace=apps/frontend\"",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "migrate": "npm run migrate:dev --workspace=apps/backend",
+    "migrate:prod": "npm run migrate:deploy --workspace=apps/backend",
+    "db:generate": "npm run db:generate --workspace=apps/backend",
+    "db:seed": "npm run db:seed --workspace=apps/backend",
+    "build": "npm run build --workspace=apps/backend && npm run build --workspace=apps/frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

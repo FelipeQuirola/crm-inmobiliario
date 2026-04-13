@@ -1,0 +1,531 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum Role {
+  ADMIN
+  VENDEDOR
+}
+
+enum LeadStatus {
+  ACTIVE
+  PAUSED
+  WON
+  LOST
+}
+
+enum LeadSource {
+  MANUAL
+  WEBSITE
+  FACEBOOK
+  GOOGLE
+  WHATSAPP
+  REFERRAL
+  OTHER
+}
+
+enum ActivityType {
+  LEAD_CREATED
+  STAGE_CHANGED
+  REASSIGNED
+  STATUS_CHANGED
+  NOTE
+  CALL
+  EMAIL
+  WHATSAPP
+  MEETING
+}
+
+enum PropertyType {
+  CASA
+  APARTAMENTO
+  TERRENO
+  OFICINA
+  LOCAL
+  BODEGA
+}
+
+enum PropertyStatus {
+  DISPONIBLE
+  RESERVADA
+  VENDIDA
+  INACTIVA
+}
+
+enum CalendarEventType {
+  MEETING
+  CALL
+  TASK
+}
+
+enum CalendarEventStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum MessageType {
+  WHATSAPP
+  EMAIL
+}
+
+enum MessageStatus {
+  SENT
+  FAILED
+  PENDING
+}
+
+enum NotificationType {
+  LEAD_INACTIVE
+  ACTION_OVERDUE
+  LEAD_UNCONTACTED
+  MEETING_REMINDER
+}
+
+enum WebhookProvider {
+  FACEBOOK
+  GOOGLE
+  OTHER
+}
+
+enum WebhookStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  DUPLICATE
+}
+
+enum LeadTemperature {
+  COLD
+  WARM
+  HOT
+}
+
+// ============================================================================
+// MODELS
+// ============================================================================
+
+model Tenant {
+  id             String          @id @default(uuid())
+  name           String
+  slug           String          @unique
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  users          User[]
+  leads          Lead[]
+  pipelineStages PipelineStage[]
+  activities     Activity[]
+  calendarEvents CalendarEvent[]
+  properties     Property[]
+  templates      Template[]
+  messages       Message[]
+  notifications       Notification[]
+  webhookEvents       WebhookEvent[]
+  facebookPageConfigs FacebookPageConfig[]
+  lossReasons         LossReason[]
+  stageChecklists     StageChecklist[]
+  leadScores          LeadScore[]
+  scoringFeedback     ScoringFeedback[]
+
+  @@map("tenants")
+}
+
+model User {
+  id               String     @id @default(uuid())
+  email            String
+  password         String
+  name             String
+  role             Role       @default(VENDEDOR)
+  isActive         Boolean    @default(true)
+  refreshTokenHash String?
+  avatarUrl        String?
+  tenantId         String
+  tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedLeads      Lead[]          @relation("AssignedLeads")
+  activities         Activity[]
+  calendarEvents     CalendarEvent[]
+  createdProperties  Property[]      @relation("CreatedProperties")
+  createdTemplates   Template[]      @relation("CreatedTemplates")
+  sentMessages       Message[]
+  notifications      Notification[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([email, tenantId])
+  @@index([tenantId])
+  @@map("users")
+}
+
+model PipelineStage {
+  id          String   @id @default(uuid())
+  name        String
+  order       Int
+  color       String   @default("#6B7280")
+  isDefault   Boolean  @default(false)
+  probability Int      @default(0)
+  description String?
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leads       Lead[]
+  stageHistory    LeadStageHistory[]
+  checklists      StageChecklist[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([order, tenantId])
+  @@index([tenantId])
+  @@map("pipeline_stages")
+}
+
+model Lead {
+  id                  String         @id @default(uuid())
+  firstName           String
+  lastName            String
+  email               String?
+  phone               String
+  phoneNormalized     String
+  duplicateHash       String
+  status              LeadStatus     @default(ACTIVE)
+  source              LeadSource     @default(MANUAL)
+  notes               String?
+  lostReason          String?
+  lossReasonId        String?
+  lossReason          LossReason?    @relation(fields: [lossReasonId], references: [id], onDelete: SetNull)
+  propertyInterest    String?
+  budget              Decimal?       @db.Decimal(12, 2)
+  lastContactAt       DateTime?
+  nextActionAt        DateTime?
+  daysInCurrentStage  Int            @default(0)
+  assignedToId        String?
+  assignedTo          User?          @relation("AssignedLeads", fields: [assignedToId], references: [id], onDelete: SetNull)
+  stageId             String?
+  stage               PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  tenantId            String
+  tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  activities           Activity[]
+  calendarEvents       CalendarEvent[]
+  interestedProperties LeadProperty[]
+  messages             Message[]
+  notifications        Notification[]
+  webhookEvents        WebhookEvent[]
+  stageHistory         LeadStageHistory[]
+  checklistProgress    LeadChecklistProgress[]
+  score                LeadScore?
+  scoringFeedback      ScoringFeedback[]
+  deletedAt            DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, assignedToId])
+  @@index([tenantId, stageId])
+  @@index([tenantId, duplicateHash])
+  @@index([tenantId, deletedAt])
+  @@map("leads")
+}
+
+model Activity {
+  id          String       @id @default(uuid())
+  type        ActivityType
+  description String
+  metadata    Json?
+  leadId      String
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+
+  @@index([leadId])
+  @@index([tenantId])
+  @@map("activities")
+}
+
+model CalendarEvent {
+  id          String              @id @default(uuid())
+  title       String
+  description String?
+  startAt     DateTime
+  endAt       DateTime
+  type        CalendarEventType   @default(MEETING)
+  status      CalendarEventStatus @default(PENDING)
+  leadId      String?
+  lead        Lead?               @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  userId      String
+  user        User                @relation(fields: [userId], references: [id])
+  tenantId    String
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@index([userId])
+  @@map("calendar_events")
+}
+
+model Property {
+  id          String         @id @default(uuid())
+  tenantId    String
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User           @relation("CreatedProperties", fields: [createdById], references: [id])
+  title       String
+  description String?
+  type        PropertyType
+  status      PropertyStatus @default(DISPONIBLE)
+  price       Decimal        @db.Decimal(14, 2)
+  currency    String         @default("USD")
+  area        Decimal?       @db.Decimal(10, 2)
+  bedrooms    Int?
+  bathrooms   Int?
+  parking     Int?
+  address     String?
+  city        String?
+  sector      String?
+  lat         Decimal?       @db.Decimal(10, 7)
+  lng         Decimal?       @db.Decimal(10, 7)
+  features    String[]
+  images      String[]
+  interestedLeads LeadProperty[]
+  deletedAt   DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@index([tenantId, deletedAt])
+  @@map("properties")
+}
+
+model LeadProperty {
+  id         String   @id @default(uuid())
+  leadId     String
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenantId   String
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@unique([leadId, propertyId])
+  @@index([leadId])
+  @@index([propertyId])
+  @@map("lead_properties")
+}
+
+model Template {
+  id          String      @id @default(uuid())
+  tenantId    String
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  type        MessageType
+  subject     String?
+  body        String
+  isActive    Boolean     @default(true)
+  createdById String
+  createdBy   User        @relation("CreatedTemplates", fields: [createdById], references: [id])
+  messages    Message[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@map("templates")
+}
+
+model Message {
+  id           String        @id @default(uuid())
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leadId       String
+  lead         Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  type         MessageType
+  templateId   String?
+  template     Template?     @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  subject      String?
+  body         String
+  status       MessageStatus @default(PENDING)
+  sentAt       DateTime?
+  errorMessage String?
+  createdAt    DateTime      @default(now())
+
+  @@index([tenantId])
+  @@index([leadId])
+  @@map("messages")
+}
+
+model WebhookEvent {
+  id              String          @id @default(uuid())
+  tenantId        String?
+  tenant          Tenant?         @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  provider        WebhookProvider
+  providerEventId String
+  payload         Json
+  status          WebhookStatus   @default(PENDING)
+  leadId          String?
+  lead            Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  errorMessage    String?
+  processedAt     DateTime?
+  createdAt       DateTime        @default(now())
+
+  @@unique([providerEventId, provider])
+  @@index([tenantId])
+  @@index([provider, status])
+  @@map("webhook_events")
+}
+
+model FacebookPageConfig {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pageId      String
+  pageName    String
+  accessToken String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([pageId])
+  @@index([tenantId])
+  @@map("facebook_page_configs")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  tenantId  String
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leadId    String?
+  lead      Lead?            @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([tenantId])
+  @@index([leadId])
+  @@map("notifications")
+}
+
+model LossReason {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  leads           Lead[]
+  scoringFeedback ScoringFeedback[]
+
+  @@index([tenantId])
+  @@map("loss_reasons")
+}
+
+model LeadStageHistory {
+  id         String         @id @default(uuid())
+  tenantId   String
+  leadId     String
+  lead       Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  stageId    String?
+  stage      PipelineStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+  stageName  String
+  enteredAt  DateTime       @default(now())
+  exitedAt   DateTime?
+  daysInStage Int?
+
+  @@index([leadId])
+  @@index([tenantId])
+  @@map("lead_stage_history")
+}
+
+model StageChecklist {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stageId   String
+  stage     PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  text      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  progress  LeadChecklistProgress[]
+
+  @@index([stageId])
+  @@index([tenantId])
+  @@map("stage_checklists")
+}
+
+model LeadChecklistProgress {
+  id          String         @id @default(uuid())
+  leadId      String
+  lead        Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  checklistId String
+  checklist   StageChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  isDone      Boolean        @default(false)
+  doneAt      DateTime?
+  createdAt   DateTime       @default(now())
+
+  @@unique([leadId, checklistId])
+  @@index([leadId])
+  @@map("lead_checklist_progress")
+}
+
+model LeadScore {
+  id                String          @id @default(uuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leadId            String          @unique
+  lead              Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  score             Int
+  temperature       LeadTemperature
+  factors           Json
+  reasoning         String
+  recommendation    String          @default("")
+  urgency           String          @default("MEDIA")
+  positiveSignals   String[]
+  negativeSignals   String[]
+  geminiAnalysis    String?
+  lastCalculatedAt  DateTime        @default(now())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([tenantId, temperature])
+  @@index([tenantId, score])
+  @@map("lead_scores")
+}
+
+model ScoringFeedback {
+  id            String          @id @default(uuid())
+  tenantId      String
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leadId        String
+  lead          Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  finalStatus   LeadStatus
+  scoreAtClose  Int
+  factors       Json
+  lossReasonId  String?
+  lossReason    LossReason?     @relation(fields: [lossReasonId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, finalStatus])
+  @@map("scoring_feedback")
+}

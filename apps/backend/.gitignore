@@ -1,0 +1,6 @@
+dist/
+node_modules/
+
+# Uploaded files — keep directory structure but ignore actual files
+uploads/**/*
+!uploads/**/.gitkeep
